@@ -1,7 +1,7 @@
 import { Lightbulb, Rocket, ShieldCheck, Target } from "lucide-react";
 import SectionHeading from "../components/SectionHeading";
 import TrainerCard from "../components/TrainerCard";
-import { trainers } from "../data/users";
+import { trainers } from "../data/trainers";
 
 const values = [
   {

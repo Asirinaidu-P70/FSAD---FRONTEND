@@ -16,7 +16,7 @@ import SectionHeading from "../components/SectionHeading";
 import TestimonialCard from "../components/TestimonialCard";
 import TrainerCard from "../components/TrainerCard";
 import WorkshopCard from "../components/WorkshopCard";
-import { trainers } from "../data/users";
+import { trainers } from "../data/trainers";
 import { faqs, landingFeatures, partnerLogos, platformStats, testimonials, workshopCategories as landingCategories } from "../data/platform";
 import { fetchWorkshops } from "../services/api";
 

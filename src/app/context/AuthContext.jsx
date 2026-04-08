@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
+  fetchCurrentUser,
   loginUser,
   registerUser,
   updateCurrentUser,
@@ -28,6 +29,35 @@ function readStoredSession() {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => readStoredSession());
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncStoredSession = async () => {
+      if (!readStoredSession()) {
+        return;
+      }
+
+      try {
+        const nextUser = await fetchCurrentUser();
+
+        if (isMounted) {
+          setUser(nextUser);
+        }
+      } catch {
+        if (isMounted) {
+          setApiAuthToken(null);
+          setUser(null);
+        }
+      }
+    };
+
+    syncStoredSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (user) {

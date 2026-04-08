@@ -1,17 +1,12 @@
 import axios from "axios";
-import { mockAdminUsers, mockLearnerUsers } from "../data/users";
-import { workshops as workshopSeed } from "../data/workshops";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
-const MOCK_TOKEN_PREFIX = "mock-token:";
-const MOCK_USERS_STORAGE_KEY = "workshop-platform-mock-users";
-const MOCK_WORKSHOPS_STORAGE_KEY = "workshop-platform-mock-workshops";
-const MOCK_REGISTRATIONS_STORAGE_KEY = "workshop-platform-mock-registrations";
+const AUTH_STORAGE_KEY = "workshop-platform-auth";
 
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
   timeout: 10000,
-  withCredentials: true,
+  withCredentials: false,
 });
 
 export function setApiAuthToken(token) {
@@ -125,6 +120,20 @@ function formatDateValue(value) {
   }).format(date);
 }
 
+function formatDateTimeValue(value) {
+  if (!value) {
+    return "Not available";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString();
+}
+
 function formatTimeValue(value) {
   if (!value) {
     return "To be announced";
@@ -163,6 +172,12 @@ function formatMonthYear(value) {
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+function sortNewestFirstById(items, getId = (item) => item?.id) {
+  return [...items].sort(
+    (a, b) => toNumber(getId(b), 0) - toNumber(getId(a), 0)
+  );
 }
 
 function formatPrice(value, currencyCode = "INR") {
@@ -219,173 +234,18 @@ function readStoredJson(key, fallbackValue) {
   }
 }
 
-function writeStoredJson(key, value) {
-  if (!canUseStorage()) {
-    return value;
-  }
-
-  window.localStorage.setItem(key, JSON.stringify(value));
-  return value;
+function getStoredAuthenticatedUser() {
+  return readStoredJson(AUTH_STORAGE_KEY, null);
 }
 
-function createDefaultMockUsers() {
-  return [...mockAdminUsers, ...mockLearnerUsers].map((user) => ({ ...user }));
+function getStoredAuthenticatedUserId() {
+  const user = getStoredAuthenticatedUser();
+  return user?.id ?? user?.userId ?? null;
 }
 
-function createDefaultMockWorkshops() {
-  return workshopSeed.map((workshop) => {
-    const { registered, ...rest } = workshop;
-
-    return {
-      ...rest,
-      registeredCount: typeof registered === "number" ? registered : 0,
-    };
-  });
-}
-
-function createDefaultMockRegistrations() {
-  return [
-    {
-      id: "reg-101",
-      userId: "user-1",
-      workshopId: 101,
-      status: "Upcoming",
-      progress: 34,
-      registeredAt: "2026-03-01T10:00:00.000Z",
-    },
-    {
-      id: "reg-102",
-      userId: "user-1",
-      workshopId: 102,
-      status: "In Progress",
-      progress: 72,
-      registeredAt: "2026-03-02T10:00:00.000Z",
-    },
-    {
-      id: "reg-104",
-      userId: "user-1",
-      workshopId: 104,
-      status: "In Progress",
-      progress: 48,
-      registeredAt: "2026-03-05T10:00:00.000Z",
-    },
-    {
-      id: "reg-105",
-      userId: "user-1",
-      workshopId: 105,
-      status: "In Progress",
-      progress: 88,
-      registeredAt: "2026-03-08T10:00:00.000Z",
-    },
-  ];
-}
-
-function getMockDatabase() {
-  return {
-    users: readStoredJson(MOCK_USERS_STORAGE_KEY, createDefaultMockUsers()),
-    workshops: readStoredJson(MOCK_WORKSHOPS_STORAGE_KEY, createDefaultMockWorkshops()),
-    registrations: readStoredJson(
-      MOCK_REGISTRATIONS_STORAGE_KEY,
-      createDefaultMockRegistrations()
-    ),
-  };
-}
-
-function persistMockDatabase({ users, workshops, registrations }) {
-  writeStoredJson(MOCK_USERS_STORAGE_KEY, users);
-  writeStoredJson(MOCK_WORKSHOPS_STORAGE_KEY, workshops);
-  writeStoredJson(MOCK_REGISTRATIONS_STORAGE_KEY, registrations);
-}
-
-function buildMockToken(userId) {
-  return `${MOCK_TOKEN_PREFIX}${userId}`;
-}
-
-function getCurrentToken() {
-  const authorizationHeader = apiClient.defaults.headers.common.Authorization;
-
-  if (typeof authorizationHeader !== "string") {
-    return null;
-  }
-
-  return authorizationHeader.replace(/^Bearer\s+/i, "");
-}
-
-function getMockUserIdFromToken() {
-  const token = getCurrentToken();
-
-  if (!token || !token.startsWith(MOCK_TOKEN_PREFIX)) {
-    return null;
-  }
-
-  return token.slice(MOCK_TOKEN_PREFIX.length);
-}
-
-function createMockApiError(message, status) {
-  const error = new Error(message);
-  error.response = {
-    status,
-    data: {
-      message,
-    },
-  };
-  return toApiError(error, message);
-}
-
-function shouldUseLocalFallback(error) {
-  const status = error?.status ?? error?.response?.status;
-  return !status || status === 404 || status === 405;
-}
-
-async function withLocalFallback(runRemote, runLocal) {
-  try {
-    return await runRemote();
-  } catch (error) {
-    if (!shouldUseLocalFallback(error)) {
-      throw error;
-    }
-
-    return runLocal();
-  }
-}
-
-function getAuthenticatedMockUser(database) {
-  const userId = getMockUserIdFromToken();
-
-  if (!userId) {
-    throw createMockApiError("Please sign in to continue.", 401);
-  }
-
-  const user = database.users.find((item) => String(item.id) === String(userId));
-
-  if (!user) {
-    throw createMockApiError("Please sign in to continue.", 401);
-  }
-
-  return user;
-}
-
-function mergeWorkshopRegistrationState(workshops, registrations, userId) {
-  const userRegistrations = registrations.filter(
-    (registration) => String(registration.userId) === String(userId)
-  );
-  const registrationMap = new Map(
-    userRegistrations.map((registration) => [
-      String(registration.workshopId),
-      registration,
-    ])
-  );
-
-  return workshops.map((workshop) => {
-    const registration = registrationMap.get(String(workshop.id));
-
-    return {
-      ...workshop,
-      registered: Boolean(registration),
-      registrationStatus: registration?.status || workshop.registrationStatus,
-      progress: registration?.progress ?? workshop.progress,
-    };
-  });
+function getStoredAuthenticatedUserEmail() {
+  const user = getStoredAuthenticatedUser();
+  return String(user?.email || "").trim().toLowerCase() || null;
 }
 
 function buildWorkshopStatus(seatsAvailable, seatsTotal, providedStatus) {
@@ -488,7 +348,7 @@ export function normalizeUser(rawUser = {}) {
       source.certificatesEarned ?? source.certificateCount ?? source.certificates,
       0
     ),
-    joinedOn: formatMonthYear(source.joinedOn || source.createdAt || source.joinedAt),
+    joinedOn: formatDateTimeValue(source.joinedOn || source.createdAt || source.joinedAt),
     interests: normalizeStringList(source.interests || source.skills || source.topics),
   };
 }
@@ -576,7 +436,11 @@ export function normalizeWorkshop(rawWorkshop = {}) {
 
 function normalizeRegistration(rawRegistration = {}) {
   const source = unwrapEnvelope(rawRegistration) || {};
-  const workshopSource = source.workshop || source.session || source.course || source;
+  const workshopSource =
+    source.workshop ||
+    source.session ||
+    source.course ||
+    (source.workshopId ? { id: source.workshopId } : source);
   const workshop = normalizeWorkshop(workshopSource);
   const registrationStatus =
     source.status && !["Open", "Closed", "Filling Fast", "Almost Full"].includes(source.status)
@@ -585,8 +449,12 @@ function normalizeRegistration(rawRegistration = {}) {
 
   return {
     ...workshop,
+    id: workshop.id || source.workshopId || source.id,
     registered: true,
     registrationId: source.id || source.registrationId || workshop.registrationId,
+    registeredAt: formatDateTimeValue(
+      source.registrationDate || source.registeredAt || source.createdAt
+    ),
     registrationStatus,
     progress: toNumber(source.progress ?? workshop.completion, 0),
   };
@@ -638,402 +506,332 @@ async function requestFirst(configs, fallbackMessage) {
   throw toApiError(lastError, fallbackMessage);
 }
 
-export async function loginUser(credentials) {
-  return withLocalFallback(
-    async () => {
-      const response = await requestFirst(
-        [
-          { method: "post", url: "/auth/login", data: credentials },
-          { method: "post", url: "/login", data: credentials },
-        ],
-        "Unable to sign in with the provided credentials."
-      );
-      const payload = unwrapEnvelope(response.data);
-      const token =
-        payload?.token ||
-        payload?.accessToken ||
-        payload?.jwt ||
-        payload?.access_token ||
-        null;
-
-      if (token) {
-        setApiAuthToken(token);
-      }
-
-      let userSource = payload?.user || payload?.profile || payload?.account || payload;
-
-      if (!userSource || (!userSource.name && !userSource.email)) {
-        try {
-          userSource = await fetchCurrentUser();
-        } catch {
-          userSource = { email: credentials.email, role: credentials.role };
-        }
-      }
-
-      return {
-        token,
-        user: normalizeUser(userSource),
-      };
-    },
-    () => {
-      const database = getMockDatabase();
-      const normalizedRole = credentials?.role ? mapRole(credentials.role) : null;
-      const matchedUser = database.users.find((user) => {
-        const emailMatches =
-          String(user.email || "").toLowerCase() ===
-          String(credentials?.email || "").trim().toLowerCase();
-        const passwordMatches = user.password === credentials?.password;
-        const roleMatches = normalizedRole ? mapRole(user.role) === normalizedRole : true;
-
-        return emailMatches && passwordMatches && roleMatches;
-      });
-
-      if (!matchedUser) {
-        throw createMockApiError(
-          "Unable to sign in with the provided credentials.",
-          401
-        );
-      }
-
-      const token = buildMockToken(matchedUser.id);
-      setApiAuthToken(token);
-
-      return {
-        token,
-        user: normalizeUser(matchedUser),
-      };
-    }
+export async function fetchUsers() {
+  const response = await requestFirst(
+    [{ method: "get", url: "/auth/users" }],
+    "Unable to load users right now."
   );
+
+  return sortNewestFirstById(
+    extractList(response.data, ["users"]).map((item) => normalizeUser(item))
+  );
+}
+
+export async function fetchUserById(userId) {
+  const response = await requestFirst(
+    [
+      { method: "get", url: `/auth/users/${userId}` },
+      { method: "get", url: `/users/${userId}` },
+    ],
+    "Unable to load your profile information."
+  );
+
+  return normalizeUser(response.data);
+}
+
+export async function fetchRegistrationsByUserId(userId) {
+  const response = await requestFirst(
+    [{ method: "get", url: `/registrations/user/${userId}` }],
+    "Unable to load registrations right now."
+  );
+
+  return sortNewestFirstById(
+    extractList(response.data, ["registrations"]).map((item) => {
+      const registration = unwrapEnvelope(item) || {};
+      return {
+        id: registration.id,
+        userId: registration.userId,
+        workshopId: registration.workshopId,
+        registrationDate: registration.registrationDate,
+      };
+    })
+  );
+}
+
+export async function fetchRegistrations() {
+  try {
+    const response = await requestFirst(
+      [{ method: "get", url: "/registrations" }],
+      "Unable to load registrations right now."
+    );
+
+    return sortNewestFirstById(
+      extractList(response.data, ["registrations"]).map((item) => {
+        const registration = unwrapEnvelope(item) || {};
+        return {
+          id: registration.id,
+          userId: registration.userId,
+          workshopId: registration.workshopId,
+          registrationDate:
+            registration.registrationDate || registration.registeredAt || registration.createdAt,
+        };
+      })
+    );
+  } catch (error) {
+    if (error.status !== 404 && error.status !== 405) {
+      throw error;
+    }
+
+    const users = await fetchUsers();
+    const registrations = await Promise.all(
+      users.map((user) => fetchRegistrationsByUserId(user.id))
+    );
+
+    return sortNewestFirstById(registrations.flat());
+  }
+}
+
+export async function loginUser(credentials) {
+  const response = await requestFirst(
+    [{ method: "post", url: "/auth/login", data: credentials }],
+    "Unable to sign in with the provided credentials."
+  );
+  const payload = unwrapEnvelope(response.data);
+  const token =
+    payload?.token ||
+    payload?.accessToken ||
+    payload?.jwt ||
+    payload?.access_token ||
+    null;
+
+  if (token) {
+    setApiAuthToken(token);
+  }
+
+  const normalizedUser = normalizeUser(
+    payload?.user || payload?.profile || payload?.account || payload
+  );
+
+  return {
+    token,
+    user: normalizedUser.id ? await fetchUserById(normalizedUser.id).catch(() => normalizedUser) : normalizedUser,
+  };
 }
 
 export async function registerUser(payload) {
-  return withLocalFallback(
-    async () => {
-      const response = await requestFirst(
-        [
-          { method: "post", url: "/auth/register", data: payload },
-          { method: "post", url: "/register", data: payload },
-        ],
-        "Unable to create the account right now."
-      );
-      const data = unwrapEnvelope(response.data);
-      const token =
-        data?.token ||
-        data?.accessToken ||
-        data?.jwt ||
-        data?.access_token ||
-        null;
-
-      if (token) {
-        setApiAuthToken(token);
-      }
-
-      let userSource = data?.user || data?.profile || data;
-
-      if (!userSource || (!userSource.name && !userSource.email)) {
-        try {
-          userSource = await fetchCurrentUser();
-        } catch {
-          userSource = payload;
-        }
-      }
-
-      return {
-        token,
-        user: normalizeUser(userSource),
-      };
-    },
-    () => {
-      const database = getMockDatabase();
-      const email = String(payload?.email || "").trim().toLowerCase();
-      const duplicateUser = database.users.some(
-        (user) => String(user.email || "").toLowerCase() === email
-      );
-
-      if (duplicateUser) {
-        throw createMockApiError("An account with this email already exists.", 409);
-      }
-
-      const role = mapRole(payload?.role);
-      const nextUser = {
-        id: `${role}-${Date.now()}`,
-        name: String(payload?.name || "").trim() || "New User",
-        email,
-        password: payload?.password || "",
-        role,
-        title: role === "admin" ? "Administrator" : "Learner",
-        company: "",
-        location: "",
-        phone: "",
-        bio: "",
-        completedHours: 0,
-        certificatesEarned: 0,
-        joinedOn: new Date().toISOString(),
-        interests: [],
-      };
-
-      persistMockDatabase({
-        ...database,
-        users: [...database.users, nextUser],
-      });
-
-      const token = buildMockToken(nextUser.id);
-      setApiAuthToken(token);
-
-      return {
-        token,
-        user: normalizeUser(nextUser),
-      };
-    }
+  const response = await requestFirst(
+    [{ method: "post", url: "/auth/register", data: payload }],
+    "Unable to create the account right now."
   );
+  const data = unwrapEnvelope(response.data);
+  const token =
+    data?.token ||
+    data?.accessToken ||
+    data?.jwt ||
+    data?.access_token ||
+    null;
+
+  if (token) {
+    setApiAuthToken(token);
+  }
+
+  const normalizedUser = normalizeUser(data?.user || data?.profile || data);
+
+  return {
+    token,
+    user: normalizedUser.id ? await fetchUserById(normalizedUser.id).catch(() => normalizedUser) : normalizedUser,
+  };
 }
 
 export async function fetchCurrentUser() {
-  return withLocalFallback(
-    async () => {
-      const response = await requestFirst(
-        [
-          { method: "get", url: "/users/me" },
-          { method: "get", url: "/profile" },
-          { method: "get", url: "/auth/me" },
-        ],
-        "Unable to load your profile information."
-      );
+  const currentUserId = getStoredAuthenticatedUserId();
+  const currentUserEmail = getStoredAuthenticatedUserEmail();
 
-      return normalizeUser(response.data);
-    },
-    () => {
-      const database = getMockDatabase();
-      return normalizeUser(getAuthenticatedMockUser(database));
+  if (currentUserId) {
+    try {
+      return await fetchUserById(currentUserId);
+    } catch (error) {
+      if (error.status !== 404 && error.status !== 405) {
+        throw error;
+      }
     }
+  }
+
+  const users = await fetchUsers();
+  const matchedUser = users.find(
+    (user) =>
+      (currentUserId && String(user.id) === String(currentUserId)) ||
+      (currentUserEmail && String(user.email).trim().toLowerCase() === currentUserEmail)
   );
+
+  if (!matchedUser) {
+    throw new Error("Unable to load your profile information.");
+  }
+
+  return matchedUser;
 }
 
 export async function updateCurrentUser(payload) {
-  return withLocalFallback(
-    async () => {
-      const response = await requestFirst(
-        [
-          { method: "put", url: "/users/me", data: payload },
-          { method: "put", url: "/profile", data: payload },
-          { method: "patch", url: "/users/me", data: payload },
-          { method: "patch", url: "/profile", data: payload },
-        ],
-        "Unable to update your profile right now."
-      );
+  const currentUserId = getStoredAuthenticatedUserId();
 
-      const data = unwrapEnvelope(response.data);
-      return normalizeUser(data && Object.keys(data).length ? data : payload);
-    },
-    () => {
-      const database = getMockDatabase();
-      const currentUser = getAuthenticatedMockUser(database);
-      const nextEmail = String(payload?.email || currentUser.email || "").trim().toLowerCase();
-      const emailTaken = database.users.some(
-        (user) =>
-          String(user.id) !== String(currentUser.id) &&
-          String(user.email || "").toLowerCase() === nextEmail
-      );
+  if (!currentUserId) {
+    throw new Error("Please sign in to update your profile.");
+  }
 
-      if (emailTaken) {
-        throw createMockApiError("Another account already uses this email address.", 409);
-      }
-
-      const nextUsers = database.users.map((user) =>
-        String(user.id) === String(currentUser.id)
-          ? {
-              ...user,
-              ...payload,
-              email: nextEmail,
-            }
-          : user
-      );
-
-      persistMockDatabase({
-        ...database,
-        users: nextUsers,
-      });
-
-      const updatedUser = nextUsers.find(
-        (user) => String(user.id) === String(currentUser.id)
-      );
-
-      return normalizeUser(updatedUser);
-    }
+  const response = await requestFirst(
+    [
+      { method: "put", url: `/auth/users/${currentUserId}`, data: payload },
+      { method: "patch", url: `/auth/users/${currentUserId}`, data: payload },
+      { method: "put", url: `/users/${currentUserId}`, data: payload },
+      { method: "patch", url: `/users/${currentUserId}`, data: payload },
+    ],
+    "Profile updates are not available until the backend exposes a user update endpoint."
   );
+
+  const data = unwrapEnvelope(response.data);
+  const normalizedUser = normalizeUser(data && Object.keys(data).length ? data : payload);
+
+  return await fetchUserById(currentUserId).catch(() => normalizedUser);
 }
 
 export async function fetchWorkshops() {
-  return withLocalFallback(
-    async () => {
-      const response = await requestFirst(
-        [{ method: "get", url: "/workshops" }],
-        "Unable to load workshops right now."
-      );
+  const response = await requestFirst(
+    [{ method: "get", url: "/workshops" }],
+    "Unable to load workshops right now."
+  );
 
-      return extractList(response.data, ["workshops"]).map((item) =>
-        normalizeWorkshop(item)
-      );
-    },
-    () => {
-      const database = getMockDatabase();
-      const userId = getMockUserIdFromToken();
-      const workshops = userId
-        ? mergeWorkshopRegistrationState(
-            database.workshops,
-            database.registrations,
-            userId
-          )
-        : database.workshops;
-
-      return workshops.map((item) => normalizeWorkshop(item));
-    }
+  return sortNewestFirstById(
+    extractList(response.data, ["workshops"]).map((item) =>
+      normalizeWorkshop(item)
+    )
   );
 }
 
 export async function fetchWorkshopById(workshopId) {
-  return withLocalFallback(
-    async () => {
-      const response = await requestFirst(
-        [{ method: "get", url: `/workshops/${workshopId}` }],
-        "Unable to load this workshop right now."
-      );
-
-      return normalizeWorkshop(response.data);
-    },
-    () => {
-      const database = getMockDatabase();
-      const userId = getMockUserIdFromToken();
-      const workshops = userId
-        ? mergeWorkshopRegistrationState(
-            database.workshops,
-            database.registrations,
-            userId
-          )
-        : database.workshops;
-      const workshop = workshops.find(
-        (item) => String(item.id) === String(workshopId)
-      );
-
-      if (!workshop) {
-        throw createMockApiError("Unable to load this workshop right now.", 404);
-      }
-
-      return normalizeWorkshop(workshop);
-    }
+  const response = await requestFirst(
+    [{ method: "get", url: `/workshops/${workshopId}` }],
+    "Unable to load this workshop right now."
   );
+
+  return normalizeWorkshop(response.data);
+}
+
+export async function createWorkshop(payload) {
+  const response = await requestFirst(
+    [{ method: "post", url: "/workshops", data: payload }],
+    "Unable to create the workshop right now."
+  );
+
+  return normalizeWorkshop(response.data);
+}
+
+export async function updateWorkshop(workshopId, payload) {
+  const response = await requestFirst(
+    [
+      { method: "put", url: `/workshops/${workshopId}`, data: payload },
+      { method: "patch", url: `/workshops/${workshopId}`, data: payload },
+    ],
+    "Unable to update the workshop right now."
+  );
+
+  return normalizeWorkshop(response.data);
 }
 
 export async function fetchMyWorkshops() {
-  return withLocalFallback(
-    async () => {
-      const response = await requestFirst(
-        [
-          { method: "get", url: "/registrations/me" },
-          { method: "get", url: "/users/me/workshops" },
-          { method: "get", url: "/workshops/registered" },
-        ],
-        "Unable to load your workshop registrations."
+  const currentUserId = getStoredAuthenticatedUserId();
+
+  if (!currentUserId) {
+    throw new Error("Please sign in to view your workshop registrations.");
+  }
+
+  const [registrationsResponse, workshopsResponse] = await Promise.all([
+    requestFirst(
+      [
+        { method: "get", url: `/registrations/user/${currentUserId}` },
+        { method: "get", url: "/registrations/me" },
+        { method: "get", url: "/users/me/workshops" },
+        { method: "get", url: "/workshops/registered" },
+      ],
+      "Unable to load your workshop registrations."
+    ),
+    requestFirst(
+      [{ method: "get", url: "/workshops" }],
+      "Unable to load your workshop registrations."
+    ),
+  ]);
+
+  const workshopMap = new Map(
+    extractList(workshopsResponse.data, ["workshops"])
+      .map((item) => normalizeWorkshop(item))
+      .map((item) => [String(item.id), item])
+  );
+
+  const registrations = extractList(registrationsResponse.data, ["registrations", "workshops"]);
+
+  return sortNewestFirstById(
+    registrations.map((item) => {
+      const registration = unwrapEnvelope(item) || {};
+      const workshopId =
+        registration.workshopId ||
+        registration.workshop?.id ||
+        registration.workshop?.workshopId;
+      const workshop = workshopId ? workshopMap.get(String(workshopId)) : null;
+
+      return normalizeRegistration(
+        workshop ? { ...registration, workshop } : registration
       );
-
-      const registrations = extractList(response.data, ["registrations", "workshops"]);
-      return registrations.map((item) => normalizeRegistration(item));
-    },
-    () => {
-      const database = getMockDatabase();
-      const currentUser = getAuthenticatedMockUser(database);
-      const registrations = database.registrations
-        .filter((item) => String(item.userId) === String(currentUser.id))
-        .map((item) => {
-          const workshop = database.workshops.find(
-            (entry) => String(entry.id) === String(item.workshopId)
-          );
-
-          return normalizeRegistration({
-            ...item,
-            workshop,
-          });
-        })
-        .filter((item) => item.id);
-
-      return registrations;
-    }
+    }),
+    (item) => item?.registrationId ?? item?.id
   );
 }
 
 export async function registerWorkshop(workshopId) {
-  return withLocalFallback(
-    async () => {
-      const response = await requestFirst(
-        [
-          { method: "post", url: `/workshops/${workshopId}/register` },
-          { method: "post", url: "/registrations", data: { workshopId } },
-        ],
-        "Unable to complete the workshop registration."
-      );
+  const currentUserId = getStoredAuthenticatedUserId();
 
-      const payload = unwrapEnvelope(response.data);
-      const source = payload?.workshop || payload?.registration || payload;
+  if (!currentUserId) {
+    throw new Error("Please sign in to register for a workshop.");
+  }
 
-      if (payload?.registration || payload?.workshop || payload?.status) {
-        return normalizeRegistration(payload?.registration || payload);
-      }
-
-      return normalizeRegistration(source);
-    },
-    () => {
-      const database = getMockDatabase();
-      const currentUser = getAuthenticatedMockUser(database);
-      const existingRegistration = database.registrations.find(
-        (item) =>
-          String(item.userId) === String(currentUser.id) &&
-          String(item.workshopId) === String(workshopId)
-      );
-
-      if (existingRegistration) {
-        throw createMockApiError("You are already registered for this workshop.", 409);
-      }
-
-      const workshopIndex = database.workshops.findIndex(
-        (item) => String(item.id) === String(workshopId)
-      );
-
-      if (workshopIndex < 0) {
-        throw createMockApiError("Unable to complete the workshop registration.", 404);
-      }
-
-      const workshop = database.workshops[workshopIndex];
-
-      if (toNumber(workshop.seatsAvailable, 0) <= 0) {
-        throw createMockApiError("No seats are available for this workshop.", 409);
-      }
-
-      const updatedWorkshop = {
-        ...workshop,
-        seatsAvailable: Math.max(0, toNumber(workshop.seatsAvailable, 0) - 1),
-        registeredCount: toNumber(workshop.registeredCount, 0) + 1,
-      };
-      const nextRegistration = {
-        id: `reg-${Date.now()}`,
-        userId: currentUser.id,
-        workshopId: updatedWorkshop.id,
-        status: "Registered",
-        progress: 0,
-        registeredAt: new Date().toISOString(),
-      };
-      const nextWorkshops = [...database.workshops];
-      nextWorkshops[workshopIndex] = updatedWorkshop;
-
-      persistMockDatabase({
-        users: database.users,
-        workshops: nextWorkshops,
-        registrations: [...database.registrations, nextRegistration],
-      });
-
-      return normalizeRegistration({
-        ...nextRegistration,
-        workshop: updatedWorkshop,
-      });
-    }
+  const response = await requestFirst(
+    [
+      { method: "post", url: `/workshops/${workshopId}/register` },
+      {
+        method: "post",
+        url: "/registrations",
+        data: {
+          userId: currentUserId,
+          workshopId,
+          registrationDate: new Date().toISOString(),
+        },
+      },
+    ],
+    "Unable to complete the workshop registration."
   );
+
+  const payload = unwrapEnvelope(response.data);
+  const source = payload?.registration || payload;
+
+  if (payload?.registration || payload?.workshop || payload?.status) {
+    const registeredWorkshopId =
+      payload?.registration?.workshopId ||
+      payload?.workshop?.id ||
+      payload?.workshop?.workshopId ||
+      payload?.workshopId ||
+      workshopId;
+    let workshop = payload?.workshop || null;
+
+    if (!workshop && registeredWorkshopId) {
+      try {
+        workshop = await fetchWorkshopById(registeredWorkshopId);
+      } catch {
+        workshop = null;
+      }
+    }
+
+    return normalizeRegistration(
+      workshop ? { ...(payload?.registration || payload), workshop } : (payload?.registration || payload)
+    );
+  }
+
+  let workshop = null;
+
+  if (source?.workshopId || workshopId) {
+    try {
+      workshop = await fetchWorkshopById(source?.workshopId || workshopId);
+    } catch {
+      workshop = null;
+    }
+  }
+
+  return normalizeRegistration(workshop ? { ...source, workshop } : source);
 }

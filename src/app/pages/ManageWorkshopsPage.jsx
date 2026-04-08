@@ -1,5 +1,6 @@
 import { PlusCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import DataTable from "../components/DataTable";
 import Modal from "../components/Modal";
@@ -19,15 +20,29 @@ function ManageWorkshopsPage() {
   );
 
   useEffect(() => {
-    fetchWorkshops()
-      .then((data) => {
-        setWorkshops(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Error fetching workshops:", err);
-        setLoading(false);
-      });
+    let isMounted = true;
+
+    const loadWorkshops = async () => {
+      try {
+        const data = await fetchWorkshops();
+
+        if (isMounted) {
+          setWorkshops(data);
+        }
+      } catch (error) {
+        toast.error(error.message || "Failed to load workshops.");
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadWorkshops();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const rows = workshops.filter((workshop) => {

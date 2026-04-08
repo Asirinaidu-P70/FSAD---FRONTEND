@@ -36,6 +36,8 @@ function MyWorkshopsPage() {
     () =>
       workshops.map((workshop) => ({
         id: workshop.id,
+        registrationId: workshop.registrationId || "Not available",
+        registeredOn: workshop.registeredAt || "Not available",
         workshop: workshop.title,
         date: workshop.date,
         trainer: workshop.trainerName,
@@ -69,6 +71,8 @@ function MyWorkshopsPage() {
         </div>
         <DataTable
           columns={[
+            { key: "registrationId", label: "Registration ID" },
+            { key: "registeredOn", label: "Registered On" },
             { key: "workshop", label: "Workshop" },
             { key: "date", label: "Date" },
             { key: "trainer", label: "Trainer" },
@@ -130,6 +134,14 @@ function MyWorkshopsPage() {
       >
         {selectedWorkshop ? (
           <div className="page-grid">
+            <div className="workshop-meta">
+              <span className="muted">Registration ID</span>
+              <strong>{selectedWorkshop.registrationId || "Not available"}</strong>
+            </div>
+            <div className="workshop-meta">
+              <span className="muted">Registered on</span>
+              <strong>{selectedWorkshop.registeredAt || "Not available"}</strong>
+            </div>
             <div className="workshop-meta">
               <span className="muted">Trainer</span>
               <strong>{selectedWorkshop.trainerName}</strong>

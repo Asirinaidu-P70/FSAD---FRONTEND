@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import PageIntro from "../components/PageIntro";
-import { fetchWorkshopById } from "../services/api";
+import {
+  createWorkshop,
+  fetchWorkshopById,
+  updateWorkshop,
+} from "../services/api";
 
 const defaultForm = {
   title: "",
@@ -16,8 +20,10 @@ const defaultForm = {
 
 function WorkshopFormPage() {
   const { workshopId } = useParams();
+  const navigate = useNavigate();
   const isEditMode = Boolean(workshopId);
   const [form, setForm] = useState(defaultForm);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!workshopId) {
@@ -54,11 +60,35 @@ function WorkshopFormPage() {
     setForm((current) => ({ ...current, [name]: value }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    toast.success(
-      isEditMode ? "Workshop changes saved locally." : "Workshop drafted."
-    );
+    setIsSaving(true);
+
+    try {
+      const payload = {
+        title: form.title.trim(),
+        category: form.category.trim(),
+        date: form.date.trim(),
+        time: form.time.trim(),
+        description: form.description.trim(),
+        seatsAvailable: Number(form.seatsAvailable) || 0,
+        price: form.price.trim(),
+      };
+
+      if (isEditMode) {
+        await updateWorkshop(workshopId, payload);
+        toast.success("Workshop updated successfully.");
+      } else {
+        await createWorkshop(payload);
+        toast.success("Workshop created successfully.");
+      }
+
+      navigate("/admin/workshops");
+    } catch (error) {
+      toast.error(error.message || "Unable to save the workshop.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -70,7 +100,7 @@ function WorkshopFormPage() {
             ? "Refine workshop details before publishing the next cohort."
             : "Create a fresh workshop experience for your learners."
         }
-        description="This frontend-only form shows how a polished workshop creation flow could look inside the admin workspace."
+        description="This form now saves workshop changes through the backend so the catalog reflects real MySQL data."
       />
 
       <form className="dashboard-card" onSubmit={handleSubmit}>
@@ -104,8 +134,8 @@ function WorkshopFormPage() {
           <label htmlFor="description">Description</label>
           <textarea className="textarea" id="description" name="description" onChange={handleChange} value={form.description} />
         </div>
-        <button className="button button-primary" style={{ marginTop: "1rem" }} type="submit">
-          {isEditMode ? "Save changes" : "Create workshop"}
+        <button className="button button-primary" disabled={isSaving} style={{ marginTop: "1rem" }} type="submit">
+          {isSaving ? "Saving..." : isEditMode ? "Save changes" : "Create workshop"}
         </button>
       </form>
     </div>

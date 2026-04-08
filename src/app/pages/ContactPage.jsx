@@ -1,8 +1,8 @@
-import axios from "axios";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { Mail, MapPin, PhoneCall } from "lucide-react";
 import SectionHeading from "../components/SectionHeading";
+import { apiClient } from "../services/api";
 
 const initialForm = {
   name: "",
@@ -23,7 +23,7 @@ function ContactPage() {
     event.preventDefault();
 
     try {
-      await axios.post("http://localhost:8080/api/contact", {
+      await apiClient.post("/contact", {
         name: form.name,
         email: form.email,
         subject: form.subject,
