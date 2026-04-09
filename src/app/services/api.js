@@ -609,10 +609,23 @@ export async function loginUser(credentials) {
 }
 
 export async function registerUser(payload) {
-  const response = await requestFirst(
-    [{ method: "post", url: "/auth/register", data: payload }],
-    "Unable to create the account right now."
-  );
+  const requestBody = {
+    fullName: String(payload?.fullName || payload?.name || "").trim(),
+    email: String(payload?.email || "").trim(),
+    password: payload?.password || "",
+    role: payload?.role || "user",
+  };
+  let response;
+
+  try {
+    response = await axios.post("/api/auth/register", requestBody, {
+      timeout: apiClient.defaults.timeout,
+      withCredentials: apiClient.defaults.withCredentials,
+    });
+  } catch (error) {
+    throw toApiError(error, "Unable to create the account right now.");
+  }
+
   const data = unwrapEnvelope(response.data);
   const token =
     data?.token ||

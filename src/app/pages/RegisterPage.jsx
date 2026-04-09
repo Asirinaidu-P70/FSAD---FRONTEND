@@ -10,7 +10,7 @@ function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [form, setForm] = useState({
-    name: "",
+    fullName: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -21,7 +21,7 @@ function RegisterPage() {
   const validate = () => {
     const nextErrors = {};
 
-    if (!form.name.trim()) nextErrors.name = "Name is required.";
+    if (!form.fullName.trim()) nextErrors.fullName = "Name is required.";
     if (!form.email.trim()) nextErrors.email = "Email is required.";
     if (!form.password) nextErrors.password = "Password is required.";
     if (form.password.length < 8) nextErrors.password = "Use at least 8 characters.";
@@ -87,9 +87,15 @@ function RegisterPage() {
 
       <form onSubmit={handleSubmit}>
         <div className="form-field">
-          <label htmlFor="name">Full name</label>
-          <input className="input" id="name" name="name" onChange={handleChange} value={form.name} />
-          {errors.name ? <span className="form-error">{errors.name}</span> : null}
+          <label htmlFor="fullName">Full name</label>
+          <input
+            className="input"
+            id="fullName"
+            name="fullName"
+            onChange={handleChange}
+            value={form.fullName}
+          />
+          {errors.fullName ? <span className="form-error">{errors.fullName}</span> : null}
         </div>
         <div className="form-field" style={{ marginTop: "1rem" }}>
           <label htmlFor="email">Email address</label>
