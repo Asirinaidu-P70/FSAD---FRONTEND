@@ -6,7 +6,9 @@ function normalizeApiBaseUrl(value) {
     .replace(/\/+$/, "");
 }
 
-const configuredApiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+const configuredApiBaseUrl = normalizeApiBaseUrl(
+  import.meta.env.VITE_API_BASE_URL || "https://fsad-backend-i8ba.onrender.com/api"
+);
 const apiBaseUrl = configuredApiBaseUrl || (import.meta.env.DEV ? "/api" : "");
 const AUTH_STORAGE_KEY = "workshop-platform-auth";
 
