@@ -1,9 +1,32 @@
 services:
   - type: web
+    name: workshop-backend
+    env: docker
+    repo: https://github.com/your-username/your-repo
+    dir: backend
+    plan: free
+    envVars:
+      - key: SPRING_DATASOURCE_URL
+        value: jdbc:mysql://mysql-database.c.render.com:3306/workshop_db
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      - key: PORT
+        value: "8081"
+      - key: SPRING_JPA_HIBERNATE_DDL_AUTO
+        value: update
+
+  - type: web
     name: workshop-platform-frontend
     env: static
+    dir: .
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://your-backend-url-here/api
+        value: https://workshop-backend.onrender.com/api
+    routes:
+      - type: redirect
+        source: /api/<path>
+        destination: https://workshop-backend.onrender.com/api/<path>
