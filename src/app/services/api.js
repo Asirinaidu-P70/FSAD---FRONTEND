@@ -1,13 +1,30 @@
 import axios from "axios";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
+function normalizeApiBaseUrl(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
+const configuredApiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+const apiBaseUrl = configuredApiBaseUrl || (import.meta.env.DEV ? "/api" : "");
 const AUTH_STORAGE_KEY = "workshop-platform-auth";
 
 export const apiClient = axios.create({
-  baseURL: apiBaseUrl,
+  baseURL: apiBaseUrl || undefined,
   timeout: 10000,
   withCredentials: false,
 });
+
+function ensureApiBaseUrl() {
+  if (apiBaseUrl) {
+    return;
+  }
+
+  throw new Error(
+    "Missing VITE_API_BASE_URL. Set it to your deployed backend URL ending with /api."
+  );
+}
 
 export function setApiAuthToken(token) {
   if (token) {
@@ -486,6 +503,8 @@ function toApiError(error, fallbackMessage) {
 }
 
 async function requestFirst(configs, fallbackMessage) {
+  ensureApiBaseUrl();
+
   let lastError = null;
 
   for (const config of configs) {
@@ -609,22 +628,22 @@ export async function loginUser(credentials) {
 }
 
 export async function registerUser(payload) {
+  ensureApiBaseUrl();
+
+  const fullName = String(payload?.fullName || payload?.name || "").trim();
+  const password = payload?.password || "";
   const requestBody = {
-    fullName: String(payload?.fullName || payload?.name || "").trim(),
+    fullName,
+    name: fullName,
     email: String(payload?.email || "").trim(),
-    password: payload?.password || "",
+    password,
+    confirmPassword: payload?.confirmPassword || password,
     role: payload?.role || "user",
   };
-  let response;
-
-  try {
-    response = await axios.post("/api/auth/register", requestBody, {
-      timeout: apiClient.defaults.timeout,
-      withCredentials: apiClient.defaults.withCredentials,
-    });
-  } catch (error) {
-    throw toApiError(error, "Unable to create the account right now.");
-  }
+  const response = await requestFirst(
+    [{ method: "post", url: "/auth/register", data: requestBody }],
+    "Unable to create the account right now."
+  );
 
   const data = unwrapEnvelope(response.data);
   const token =
